@@ -37,71 +37,71 @@ void close_driver(int fd_driver) {
 }
 
 int main() {
-  std::uint32_t val = 0;
   int error = 0;
-
   const char *dev = "/dev/nvme0n1";
-  __u32 read = 0;
-  // For some reason, a stack allocated memory region would not work here, so just allocate it on heap ...
-  int *writeP = (int *)malloc(sizeof(int));
-  *writeP = 42;
   struct k2_ioctl io {};
+  char *char_param = (char *)malloc(K2_IOCTL_CHAR_PARAM_LENGTH);
 
   auto fd = open_driver(k2_iosched_dev().c_str());
-  error = ioctl(fd, K2_IOC_GET_VERSION, &val);
+
+  memset(&io, 0, sizeof(io));
+  io.string_param = char_param;
+  error = ioctl(fd, K2_IOC_GET_VERSION, &io);
   if (error < 0) {
     std::cerr << "ioctl test none failed: " << strerror(errno) << std::endl;
     goto finally;
   }
 
-  std::cout << "Value is: " << val << std::endl;
+  std::cout << "Version is: " << io.string_param << std::endl;
 
 #if true
-  error = ioctl(fd, K2_IOC_READ_TEST, &read);
-  if (error < 0) {
-    std::cerr << "ioctl read test failed " << strerror(errno) << std::endl;
-    goto finally;
-  }
-  std::cout << "Read Test: " << read << std::endl;
-#endif
-
-#if true
-  error = ioctl(fd, K2_IOC_WRITE_TEST, writeP);
-  if (error < 0) {
-    std::cerr << "ioctl write test failed: " << strerror(errno) <<  std::endl;
-    goto finally;
-  }
-  std::cout << "Write Test: " << *writeP << std::endl;
-#endif
-
-#if true
-  error = ioctl(fd, K2_IOC_WRITE_READ_TEST, writeP);
-  if (error < 0) {
-    std::cerr << "ioctl write read test failed: " << strerror(errno) <<  std::endl;
-    goto finally;
-  }
-  std::cout << "Write Read Test: " << *writeP << std::endl;
-#endif
-
-#if true
-
   memset(&io, 0, sizeof(struct k2_ioctl));
-
-  io.dev_name = dev;
-  io.dev_name_len = strlen(io.dev_name);
-
+  io.blk_dev = dev;
   error = ioctl(fd, K2_IOC_CURRENT_INFLIGHT_LATENCY, &io);
   if (error < 0) {
     std::cerr << "ioctl wr test failed: " << strerror(errno) << std::endl;
     goto finally;
   }
 
-  std::cout << "Device " << io.dev_name << " has current inflight of "
-            << io.u32_ret << std::endl;
+  std::cout << "Device " << io.blk_dev << " has current inflight of "
+            << io.u32_param << std::endl;
+#endif
+
+#if true
+  memset(&io, 0, sizeof(struct k2_ioctl));
+  io.blk_dev = dev;
+  std::cout << io.blk_dev << " " << strlen(io.blk_dev) << std::endl;
+
+  io.interval_ns = 5000;
+  io.task_pid = 8000;
+
+  error = ioctl(fd, K2_IOC_REGISTER_PERIODIC_TASK, &io);
+  if (error < 0) {
+    std::cerr << "ioctl register periodic task failed: " << strerror(errno)
+              << std::endl;
+    goto finally;
+  }
+
+  std::cout << "Registered periodic task with pid " << io.task_pid
+            << " and interval time[ns] " << io.interval_ns << "for "
+            << io.blk_dev << std::endl;
+#endif
+
+#if true
+  memset(&io, 0, sizeof(struct k2_ioctl));
+  io.string_param = char_param;
+  error = ioctl(fd, K2_IOC_GET_DEVICES, &io);
+  if (error < 0) {
+    std::cerr << "ioctl register periodic task failed: " << strerror(errno)
+              << std::endl;
+    goto finally;
+  }
+
+  std::cout << "Running instances of k2: " << io.string_param << std::endl;
 #endif
 
 finally:
-  free(writeP);
+  free(char_param);
   close_driver(fd);
   return error;
 }
