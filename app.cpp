@@ -38,7 +38,7 @@ void close_driver(int fd_driver) {
 
 int main() {
   int error = 0;
-  const char *dev = "/dev/nvme0n1";
+  const char *dev = "nvme0n1";
   struct k2_ioctl io {};
   char *char_param = (char *)malloc(K2_IOCTL_CHAR_PARAM_LENGTH);
 
