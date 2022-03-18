@@ -10,114 +10,161 @@ extern "C" {
 #include <cstring>
 #include <iostream>
 #include <string>
+#include <functional>
 
 #include "k2.h"
 
-static std::string k2_iosched_dev() { return "/dev/k2-iosched"; }
+namespace k2 {
 
-int open_driver(const char *dev) {
+    std::string k2IoschedDev()
+    { return "/dev/k2-iosched"; }
 
-  int f = open(dev, O_RDWR);
-  if (f < 0) {
-    printf("ERROR: could not open \"%s\".\n", dev);
-    printf("    errno = %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
-  }
+    int openDriver(const std::string &devName, int &fd)
+    {
+        int result = open(devName.c_str(), O_RDWR);
+        if (result < 0) {
+            std::cerr << "Could not open " << devName << " : " << strerror(errno) << std::endl;
+            return errno;
+        }
+        fd = result;
+        return EXIT_SUCCESS;
+    }
 
-  return f;
+    int closeDriver(const int fd)
+    {
+        int result = close(fd);
+        if (result < 0) {
+            std::cerr << "Could not close file descriptor " << fd << " : " << strerror(errno) << std::endl;
+            return errno;
+        }
+        return EXIT_SUCCESS;
+    }
+
+    void dynamicDeviceContext(const std::function<void(int &fd)> &func)
+    {
+        int fd = 0;
+        int ret = openDriver(k2IoschedDev(), fd);
+        if (ret) {
+            return;
+        }
+
+        func(fd);
+
+        closeDriver(fd);
+    }
+
+    void dynamicIoctlContext(const std::string &disk, const std::function<void(struct k2_ioctl &io)> &func)
+    {
+        struct k2_ioctl io{};
+        memset(&io, 0, sizeof(io));
+
+        char *dev = (char *) malloc(K2_IOCTL_BLK_DEV_NAME_LENGTH);
+        strncpy(dev, disk.c_str(), K2_IOCTL_BLK_DEV_NAME_LENGTH);
+        char *char_param = (char *) malloc(K2_IOCTL_CHAR_PARAM_LENGTH);
+        io.string_param = char_param;
+        io.blk_dev = dev;
+
+        func(io);
+
+        free(char_param);
+        free(dev);
+    }
+
+    std::string getVersion()
+    {
+        int ret = 0;
+        const std::string device;
+        std::string version;
+
+        dynamicDeviceContext([&](int &fd) {
+            dynamicIoctlContext(device, [&](struct k2_ioctl &io) {
+                ret = ioctl(fd, K2_IOC_GET_VERSION, &io);
+                if (ret < 0) {
+                    std::cerr << "ioctl could not determine version: " << strerror(errno)
+                              << std::endl;
+                } else {
+                    version = io.string_param;
+                }
+            });
+        });
+        return version;
+    }
+
+    std::string getActiveDevices() {
+        int ret = 0;
+        const std::string device;
+        std::string instances;
+
+        dynamicDeviceContext([&](int &fd) {
+            dynamicIoctlContext(device, [&](struct k2_ioctl &io) {
+                ret = ioctl(fd, K2_IOC_GET_DEVICES, &io);
+                if (ret < 0) {
+                    std::cerr << "ioctl could not determine active devices: " << strerror(errno)
+                              << std::endl;
+                } else {
+                    instances = io.string_param;
+                }
+            });
+        });
+        return instances;
+    }
+
+    void registerTask(const std::string &device, const pid_t pid, std::uint32_t interval_ns)
+    {
+        int ret = 0;
+
+        dynamicDeviceContext([&](int &fd) {
+            dynamicIoctlContext(device, [&](struct k2_ioctl &io) {
+                io.interval_ns = interval_ns;
+                io.task_pid = pid;
+
+                ret = ioctl(fd, K2_IOC_REGISTER_PERIODIC_TASK, &io);
+                if (ret < 0) {
+                    std::cerr << "ioctl register periodic task failed: " << strerror(errno)
+                              << std::endl;
+                } else {
+                    std::cout << "Registered periodic task with pid " << io.task_pid
+                              << " and interval time[ns] " << io.interval_ns << " for "
+                              << io.blk_dev << std::endl;
+                }
+            });
+        });
+
+    }
+
+    void unregisterTask(const std::string &device, const pid_t pid)
+    {
+        int ret = 0;
+        dynamicDeviceContext([&](int &fd) {
+            dynamicIoctlContext(device, [&](struct k2_ioctl &io) {
+                io.task_pid = pid;
+
+                ret = ioctl(fd, K2_IOC_UNREGISTER_PERIODIC_TASK, &io);
+                if (ret < 0) {
+                    std::cerr << "ioctl unregister periodic task failed: " << strerror(errno)
+                              << std::endl;
+                } else {
+                    std::cout << "Unegistered periodic task with pid " << io.task_pid << " for " << io.blk_dev
+                              << std::endl;
+                }
+            });
+        });
+    }
+
 }
 
-void close_driver(int fd_driver) {
 
-  int result = close(fd_driver);
-  if (result == -1) {
-    printf("    errno = %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
-  }
-}
+int main()
+{
+    const auto disk = "nvme0n1";
+    const auto pid = 8000;
+    const auto interval = 1337;
 
-int main() {
-  int error = 0;
-  const char *dev = "nvme0n1";
-  struct k2_ioctl io {};
-  char *char_param = (char *)malloc(K2_IOCTL_CHAR_PARAM_LENGTH);
+    std::cout << "k2 version is " << k2::getVersion() << std::endl;
+    std::cout << "k2 is active on " << k2::getActiveDevices() << std::endl;
+    k2::registerTask(disk, pid, interval);
+    k2::unregisterTask(disk, pid);
 
-  auto fd = open_driver(k2_iosched_dev().c_str());
 
-  memset(&io, 0, sizeof(io));
-  io.string_param = char_param;
-  error = ioctl(fd, K2_IOC_GET_VERSION, &io);
-  if (error < 0) {
-    std::cerr << "ioctl test none failed: " << strerror(errno) << std::endl;
-    goto finally;
-  }
-
-  std::cout << "Version is: " << io.string_param << std::endl;
-
-#if true
-  memset(&io, 0, sizeof(struct k2_ioctl));
-  io.blk_dev = dev;
-  error = ioctl(fd, K2_IOC_CURRENT_INFLIGHT_LATENCY, &io);
-  if (error < 0) {
-    std::cerr << "ioctl wr test failed: " << strerror(errno) << std::endl;
-    goto finally;
-  }
-
-  std::cout << "Device " << io.blk_dev << " has current inflight of "
-            << io.u32_param << std::endl;
-#endif
-
-#if true
-  memset(&io, 0, sizeof(struct k2_ioctl));
-  io.blk_dev = dev;
-  std::cout << io.blk_dev << " " << strlen(io.blk_dev) << std::endl;
-
-  io.interval_ns = 5000;
-  io.task_pid = 7000;
-
-  error = ioctl(fd, K2_IOC_REGISTER_PERIODIC_TASK, &io);
-  if (error < 0) {
-    std::cerr << "ioctl register periodic task failed: " << strerror(errno)
-              << std::endl;
-  } else {
-    std::cout << "Registered periodic task with pid " << io.task_pid
-              << " and interval time[ns] " << io.interval_ns << " for "
-              << io.blk_dev << std::endl;
-  }
-#endif
-
-#if true
-  memset(&io, 0, sizeof(struct k2_ioctl));
-  io.blk_dev = dev;
-  std::cout << io.blk_dev << " " << strlen(io.blk_dev) << std::endl;
-
-  io.task_pid = 7000;
-
-  error = ioctl(fd, K2_IOC_UNREGISTER_PERIODIC_TASK, &io);
-  if (error < 0) {
-    std::cerr << "ioctl unregister periodic task failed: " << strerror(errno)
-              << std::endl;
-  } else {
-    std::cout << "UnRegistered periodic task with pid " << io.task_pid
-              << " for " << io.blk_dev << std::endl;
-  }
-#endif
-
-#if false
-  memset(&io, 0, sizeof(struct k2_ioctl));
-  io.string_param = char_param;
-  error = ioctl(fd, K2_IOC_GET_DEVICES, &io);
-  if (error < 0) {
-    std::cerr << "ioctl register periodic task failed: " << strerror(errno)
-              << std::endl;
-    goto finally;
-  }
-
-  std::cout << "Running instances of k2: " << io.string_param << std::endl;
-#endif
-
-finally:
-  free(char_param);
-  close_driver(fd);
-  return error;
+    return 0;
 }
