@@ -73,21 +73,37 @@ int main() {
   std::cout << io.blk_dev << " " << strlen(io.blk_dev) << std::endl;
 
   io.interval_ns = 5000;
-  io.task_pid = 8000;
+  io.task_pid = 7000;
 
   error = ioctl(fd, K2_IOC_REGISTER_PERIODIC_TASK, &io);
   if (error < 0) {
     std::cerr << "ioctl register periodic task failed: " << strerror(errno)
               << std::endl;
-    goto finally;
+  } else {
+    std::cout << "Registered periodic task with pid " << io.task_pid
+              << " and interval time[ns] " << io.interval_ns << " for "
+              << io.blk_dev << std::endl;
   }
-
-  std::cout << "Registered periodic task with pid " << io.task_pid
-            << " and interval time[ns] " << io.interval_ns << "for "
-            << io.blk_dev << std::endl;
 #endif
 
 #if true
+  memset(&io, 0, sizeof(struct k2_ioctl));
+  io.blk_dev = dev;
+  std::cout << io.blk_dev << " " << strlen(io.blk_dev) << std::endl;
+
+  io.task_pid = 7000;
+
+  error = ioctl(fd, K2_IOC_UNREGISTER_PERIODIC_TASK, &io);
+  if (error < 0) {
+    std::cerr << "ioctl unregister periodic task failed: " << strerror(errno)
+              << std::endl;
+  } else {
+    std::cout << "UnRegistered periodic task with pid " << io.task_pid
+              << " for " << io.blk_dev << std::endl;
+  }
+#endif
+
+#if false
   memset(&io, 0, sizeof(struct k2_ioctl));
   io.string_param = char_param;
   error = ioctl(fd, K2_IOC_GET_DEVICES, &io);
