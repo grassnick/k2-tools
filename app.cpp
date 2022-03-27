@@ -210,7 +210,7 @@ void childSignalHandler(int signal)
     childTerminate = true;
 }
 
-void backgroundLoad(int index)
+void backgroundLoad(std::size_t index)
 {
     std::signal(SIGINT, childSignalHandler);
     std::signal(SIGTERM, childSignalHandler);
