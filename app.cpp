@@ -119,7 +119,7 @@ namespace k2 {
         return instances;
     }
 
-    void registerTask(const std::string &device, const pid_t pid, std::uint32_t interval_ns)
+    void registerTask(const std::string &device, const pid_t pid, std::int64_t interval_ns)
     {
         int ret = 0;
 
@@ -255,7 +255,8 @@ int main()
     }
 
     const auto mainPid = getpid();
-    const auto interval = 100000000;
+    const auto interval = std::chrono::seconds(10);
+    const auto intervalNs = std::chrono::duration_cast<std::chrono::nanoseconds>(interval).count();
 
     std::signal(SIGINT, mainSignalHandler);
     std::signal(SIGTERM, mainSignalHandler);
@@ -265,7 +266,7 @@ int main()
 
     std::cout << "k2 version is " << k2::getVersion() << std::endl;
     std::cout << "k2 is active on " << k2::getActiveDevices() << std::endl;
-    k2::registerTask(disk, mainPid, interval);
+    k2::registerTask(disk, mainPid, intervalNs);
 
     // Allocate memory for buffer to write
     const std::size_t bs = 1024 << 8; // 256K
@@ -279,7 +280,7 @@ int main()
 
         for (std::size_t i = 0; i < 1024; i++) {
             write(fd, buffer, bs);
-            std::this_thread::sleep_for(interval * 1ns);
+            std::this_thread::sleep_for(intervalNs * 1ns);
         }
     }
     std::this_thread::sleep_for(3s);
