@@ -215,7 +215,7 @@ void backgroundLoad(std::size_t index)
     std::signal(SIGINT, childSignalHandler);
     std::signal(SIGTERM, childSignalHandler);
 
-    const std::size_t bs = 1024 << 5; // 1M
+    const std::size_t bs = 1024 << 12; // 4M
     void *childBuffer = malloc(bs);
     memset(childBuffer, 0, bs);
 
@@ -236,7 +236,7 @@ void backgroundLoad(std::size_t index)
 }
 
 
-int main()
+int main(int argc, char** argv)
 {
     for (std::size_t i = 0; i < NUM_BACKGROUND_PROCESSES; i++) {
         const pid_t forkPid = fork();
@@ -269,8 +269,12 @@ int main()
     k2::registerTask(disk, mainPid, intervalNs);
 
     // Allocate memory for buffer to write
-    const std::size_t bs = 1024 << 8; // 256K
-    buffer = malloc(bs); // This mem
+    std::size_t bs = 1;
+    if (argc == 2) {
+        char* tmp;
+        bs = strtoul(argv[1], &tmp, 10) << 10;
+    }
+    buffer = malloc(bs);
     memset(buffer, 0, bs);
 
     fd = open(("/dev/" + disk).c_str(), O_RDWR | O_SYNC);
@@ -280,6 +284,7 @@ int main()
 
         for (std::size_t i = 0; i < 1024; i++) {
             write(fd, buffer, bs);
+            std::cout << "Issued Request of size " << bs << " - (" << (bs >> 10) << " KiByte)" <<  std::endl;
             std::this_thread::sleep_for(intervalNs * 1ns);
         }
     }
