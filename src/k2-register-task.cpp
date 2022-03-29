@@ -116,7 +116,7 @@ int main(int argc, char **argv)
     }
 
     auto device = program.get<std::string>("--device");
-    auto pid = program.get<pid_t>("--pid");
+    auto pid = program.present<pid_t>("--pid");
     auto interval = program.present<std::int64_t>("--interval");
 
     K2App app(device, pid, interval, mode);
