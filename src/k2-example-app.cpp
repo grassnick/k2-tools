@@ -10,6 +10,7 @@ extern "C" {
 #include <sys/resource.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <sys/prctl.h>
 }
 
 #include "libk2/libk2.hpp"
@@ -50,6 +51,9 @@ void backgroundLoad(std::size_t index)
     std::signal(SIGTERM, childSignalHandler);
 
     const std::size_t bs = 1024 << 12; // 4M
+    std::string processName = "k2-app-" + std::to_string(index);
+    prctl(PR_SET_NAME, processName.c_str());
+
     void *childBuffer = malloc(bs);
     memset(childBuffer, 0, bs);
 
