@@ -20,7 +20,7 @@ extern "C" {
 const std::string disk("nvme0n1");
 int fd = 0;
 void *buffer = nullptr;
-constexpr std::size_t NUM_BACKGROUND_PROCESSES = 0;
+constexpr std::size_t NUM_BACKGROUND_PROCESSES = 10;
 std::array<pid_t, NUM_BACKGROUND_PROCESSES> backgroundProcessPids;
 bool childTerminate = false;
 
@@ -108,7 +108,7 @@ int main(int argc, char **argv)
     }
 
     const auto mainPid = getpid();
-    const auto interval = std::chrono::seconds(10);
+    const auto interval = std::chrono::milliseconds(10);
     const auto intervalNs = std::chrono::duration_cast<std::chrono::nanoseconds>(interval).count();
 
     std::signal(SIGINT, mainSignalHandler);
@@ -122,7 +122,7 @@ int main(int argc, char **argv)
     k2::registerTask(disk, mainPid, intervalNs);
 
     // Allocate memory for buffer to write
-    std::size_t bs = 512;
+    std::size_t bs = 4096;
     if (argc == 2) {
         char *tmp;
         bs = strtoul(argv[1], &tmp, 10) << 10;
@@ -137,8 +137,7 @@ int main(int argc, char **argv)
 
         for (std::size_t i = 0; i < 1024; i++) {
             write(fd, buffer, bs);
-            //std::cout << "Issued Request of size " << bs << " - (" << (bs >> 10) << " KiByte)" <<  std::endl;
-            //std::this_thread::sleep_for(intervalNs * 1ns);
+            std::cout << "Issued Request of size " << bs << " - (" << (bs >> 10) << " KiByte) " << i <<  std::endl;
             std::this_thread::sleep_for(intervalNs * 1ns);
         }
     }
