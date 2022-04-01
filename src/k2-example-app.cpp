@@ -56,17 +56,32 @@ void backgroundLoad(std::size_t index)
 
     void *childBuffer = malloc(bs);
     memset(childBuffer, 0, bs);
+    ssize_t ret = 0;
 
     // Set different prio levels to children
     setpriority(PRIO_PROCESS, 0, index);
+    goto newRun;
 
+    reRun:
+    close(fd);
+
+
+    newRun:
     int f = open(("/dev/" + disk).c_str(), O_RDWR | O_SYNC);
     if (f < 0) {
         std::cout << "Could not open raw device file" << std::endl;
     } else {
         while (!childTerminate) {
-            write(f, childBuffer, bs);
-            std::this_thread::sleep_for(100ns);
+            ret = write(f, childBuffer, bs);
+            if (ret < 0) {
+                if (errno == ENOSPC) {
+                    std::cerr << "Background process " << index << ": Device full, restarting" << std::endl;
+                    goto reRun;
+                }
+                std::cerr << "Error on child write " << ret << " " << std::strerror(errno) << std::endl;
+                exit(errno);
+            }
+            std::this_thread::sleep_for(1ms);
         }
     }
     close(fd);
