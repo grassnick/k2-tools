@@ -138,20 +138,21 @@ int main(int argc, char **argv)
         for (std::size_t i = 0; i < 1024; i++) {
             write(fd, buffer, bs);
             //std::cout << "Issued Request of size " << bs << " - (" << (bs >> 10) << " KiByte)" <<  std::endl;
-            //terminate();
             //std::this_thread::sleep_for(intervalNs * 1ns);
+            std::this_thread::sleep_for(intervalNs * 1ns);
         }
     }
-    std::this_thread::sleep_for(3s);
+    k2::unregisterTask(disk, mainPid);
+    std::cout << "Finished main thread" << std::endl;
 
     // Close all background load processes
     for (const auto pid: backgroundProcessPids) {
         kill(pid, SIGTERM);
         int stat;
+        std::cout << "Waiting for PID " << pid << std::endl;
         waitpid(pid, &stat, 0);
     }
 
-    k2::unregisterTask(disk, mainPid);
     free(buffer);
 
     return 0;
