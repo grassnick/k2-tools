@@ -4,6 +4,7 @@ add_library(${TARGET} STATIC)
 target_sources(${TARGET}
     PRIVATE
         libk2.cpp
+        ionice.cpp
 )
 
 target_include_directories(${TARGET}

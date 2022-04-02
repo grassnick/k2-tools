@@ -18,3 +18,4 @@ namespace k2 {
 
     void unregisterAllTasks(const std::string &device);
 }
+
