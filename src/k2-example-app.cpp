@@ -14,7 +14,7 @@ extern "C" {
 }
 
 #include "libk2/libk2.hpp"
-
+#include "libk2/ionice.hpp"
 
 // Global variables <3
 const std::string disk("nvme0n1");
@@ -50,21 +50,37 @@ void backgroundLoad(std::size_t index)
     std::signal(SIGINT, childSignalHandler);
     std::signal(SIGTERM, childSignalHandler);
 
-    const std::size_t bs = 1024 << 12; // 4M
+    // Set own process name work background tasks
     std::string processName = "k2-app-" + std::to_string(index);
     prctl(PR_SET_NAME, processName.c_str());
 
+    // Set the first worker to best effort scheduling, the rest to realtime scheduling of different priority value
+    int err = 0;
+    if (index == 0) {
+        err = ioPrioSet(ionice::IoClass::BestEffort, ionice::IoLevel::L4);
+    } else {
+        err = ioPrioSet(ionice::IoClass::RealTime, ionice::ioLevelToEnum(static_cast<int>(index - 1) % 8));
+    }
+    if (err) {
+        std::cerr << "Could not set background task priority: " << strerror(err) << std::endl;
+    }
+
+    ionice::IoClass ioClass;
+    ionice::IoLevel ioLevel;
+    err = ioPrioGet(ioClass, ioLevel);
+    if (!err) {
+        std::cout << "New prio class: " << ioClass << ", level: " << ioLevel << std::endl;
+    }
+
+    const std::size_t bs = 1024 << 12; // 4M
     void *childBuffer = malloc(bs);
     memset(childBuffer, 0, bs);
     ssize_t ret = 0;
 
-    // Set different prio levels to children
-    setpriority(PRIO_PROCESS, 0, index);
     goto newRun;
 
     reRun:
     close(fd);
-
 
     newRun:
     int f = open(("/dev/" + disk).c_str(), O_RDWR | O_SYNC);
@@ -75,6 +91,7 @@ void backgroundLoad(std::size_t index)
             ret = write(f, childBuffer, bs);
             if (ret < 0) {
                 if (errno == ENOSPC) {
+                    // We reached the end of the test device, start over again
                     std::cerr << "Background process " << index << ": Device full, restarting" << std::endl;
                     goto reRun;
                 }
@@ -115,7 +132,11 @@ int main(int argc, char **argv)
     std::signal(SIGTERM, mainSignalHandler);
 
     // Assign the highest possible priority to this process
-    setpriority(PRIO_PROCESS, 0, PRIO_MAX);
+    int ret = ionice::ioPrioSet(ionice::IoClass::RealTime, ionice::IoLevel::L0);
+    if (ret) {
+        std::cerr << "Could not set main workload IO prio " << strerror(ret) << std::endl;
+        terminate();
+    }
 
     std::cout << "k2 version is " << k2::getVersion() << std::endl;
     std::cout << "k2 is active on " << k2::getActiveDevices() << std::endl;
@@ -137,7 +158,7 @@ int main(int argc, char **argv)
 
         for (std::size_t i = 0; i < 1024; i++) {
             write(fd, buffer, bs);
-            std::cout << "Issued Request of size " << bs << " - (" << (bs >> 10) << " KiByte) " << i <<  std::endl;
+            std::cout << "Issued Request of size " << bs << " - (" << (bs >> 10) << " KiByte) " << i << std::endl;
             std::this_thread::sleep_for(intervalNs * 1ns);
         }
     }
