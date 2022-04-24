@@ -33,8 +33,7 @@ std::array<pid_t, NUM_BACKGROUND_PROCESSES> backgroundProcessPids;
 bool childTerminate = false;
 
 
-void terminate()
-{
+void terminate() {
     std::cerr << "Process terminating gracefully" << std::endl;
     k2::unregisterAllTasks(disk);
     if (buffer != nullptr) {
@@ -43,18 +42,15 @@ void terminate()
     exit(-1);
 }
 
-void mainSignalHandler(int signal)
-{
+void mainSignalHandler(int signal) {
     terminate();
 }
 
-void childSignalHandler(int signal)
-{
+void childSignalHandler(int signal) {
     childTerminate = true;
 }
 
-void backgroundLoad(std::size_t index)
-{
+void backgroundLoad(std::size_t index) {
     std::signal(SIGINT, childSignalHandler);
     std::signal(SIGTERM, childSignalHandler);
 
@@ -68,7 +64,6 @@ void backgroundLoad(std::size_t index)
         std::cerr << "Could not set background task priority: " << strerror(err) << std::endl;
     }
     assignThisProcessToCore((index % (std::thread::hardware_concurrency() - 1)) + 1);
-
 
     ionice::IoClass ioClass;
     ionice::IoLevel ioLevel;
@@ -111,8 +106,7 @@ void backgroundLoad(std::size_t index)
 }
 
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     for (std::size_t i = 0; i < NUM_BACKGROUND_PROCESSES; i++) {
         const pid_t forkPid = fork();
         if (forkPid < 0) {
@@ -164,8 +158,6 @@ int main(int argc, char **argv)
     if (fd < 0) {
         std::cout << "Could not open raw device file" << std::endl;
     } else {
-
-        for (std::size_t i = 0; i < 1024; i++) {
         auto start = std::chrono::steady_clock::now();
         for (std::size_t i = 0; i < 512; i++) {
             write(fd, buffer, bs);
