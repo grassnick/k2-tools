@@ -11,16 +11,24 @@ extern "C" {
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <sys/prctl.h>
+#include <sched.h>
 }
 
 #include "libk2/libk2.hpp"
 #include "libk2/ionice.hpp"
 
+void assignThisProcessToCore(int coreId) {
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(coreId, &mask);
+    sched_setaffinity(0, sizeof(mask), &mask);
+}
+
 // Global variables <3
 const std::string disk("nvme0n1");
 int fd = 0;
 void *buffer = nullptr;
-constexpr std::size_t NUM_BACKGROUND_PROCESSES = 10;
+constexpr std::size_t NUM_BACKGROUND_PROCESSES = 3;
 std::array<pid_t, NUM_BACKGROUND_PROCESSES> backgroundProcessPids;
 bool childTerminate = false;
 
@@ -55,15 +63,12 @@ void backgroundLoad(std::size_t index)
     prctl(PR_SET_NAME, processName.c_str());
 
     // Set the first worker to best effort scheduling, the rest to realtime scheduling of different priority value
-    int err = 0;
-    if (index == 0) {
-        err = ioPrioSet(ionice::IoClass::BestEffort, ionice::IoLevel::L4);
-    } else {
-        err = ioPrioSet(ionice::IoClass::RealTime, ionice::ioLevelToEnum(static_cast<int>(index - 1) % 8));
-    }
+    int err = ionice::ioPrioSet(ionice::IoClass::RealTime, ionice::IoLevel::L1);
     if (err) {
         std::cerr << "Could not set background task priority: " << strerror(err) << std::endl;
     }
+    assignThisProcessToCore((index % (std::thread::hardware_concurrency() - 1)) + 1);
+
 
     ionice::IoClass ioClass;
     ionice::IoLevel ioLevel;
@@ -98,7 +103,7 @@ void backgroundLoad(std::size_t index)
                 std::cerr << "Error on child write " << ret << " " << std::strerror(errno) << std::endl;
                 exit(errno);
             }
-            std::this_thread::sleep_for(1ms);
+            std::this_thread::sleep_for(2ms);
         }
     }
     close(fd);
@@ -125,7 +130,7 @@ int main(int argc, char **argv)
     }
 
     const auto mainPid = getpid();
-    const auto interval = std::chrono::milliseconds(10);
+    const auto interval = std::chrono::milliseconds(10); // Like k2 paper
     const auto intervalNs = std::chrono::duration_cast<std::chrono::nanoseconds>(interval).count();
 
     std::signal(SIGINT, mainSignalHandler);
@@ -141,9 +146,13 @@ int main(int argc, char **argv)
     std::cout << "k2 version is " << k2::getVersion() << std::endl;
     std::cout << "k2 is active on " << k2::getActiveDevices() << std::endl;
     k2::registerTask(disk, mainPid, intervalNs);
+    // Lock to core
+    assignThisProcessToCore(0);
+    // Assign higher process scheduling priority
+    setpriority(PRIO_PROCESS, 0, -10);
 
     // Allocate memory for buffer to write
-    std::size_t bs = 4096;
+    std::size_t bs = 64 * 1024;// 64K;
     if (argc == 2) {
         char *tmp;
         bs = strtoul(argv[1], &tmp, 10) << 10;
@@ -151,7 +160,7 @@ int main(int argc, char **argv)
     buffer = malloc(bs);
     memset(buffer, 0, bs);
 
-    fd = open(("/dev/" + disk).c_str(), O_RDWR | O_SYNC | O_APPEND);
+    fd = open(("/dev/" + disk).c_str(), O_RDWR | O_SYNC);
     if (fd < 0) {
         std::cout << "Could not open raw device file" << std::endl;
     } else {
