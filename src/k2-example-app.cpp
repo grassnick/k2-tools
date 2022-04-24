@@ -166,10 +166,15 @@ int main(int argc, char **argv)
     } else {
 
         for (std::size_t i = 0; i < 1024; i++) {
+        auto start = std::chrono::steady_clock::now();
+        for (std::size_t i = 0; i < 512; i++) {
             write(fd, buffer, bs);
             std::cout << "Issued Request of size " << bs << " - (" << (bs >> 10) << " KiByte) " << i << std::endl;
             std::this_thread::sleep_for(intervalNs * 1ns);
         }
+        auto end = std::chrono::steady_clock::now();
+        std::cout << "Main loop took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+                  << "ms" << std::endl;
     }
     k2::unregisterTask(disk, mainPid);
     std::cout << "Finished main thread" << std::endl;
