@@ -27,3 +27,11 @@ target_link_libraries(${TARGET}
         k2
         argparse::argparse
 )
+
+set(TARGET dev_t-to-internal)
+add_executable(${TARGET})
+
+target_sources(${TARGET}
+        PRIVATE
+        dev_t-to-internal.cpp
+)
